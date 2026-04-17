@@ -15,23 +15,14 @@ export default async function handler(req, res) {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0"
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Referer": "https://resultados.onpe.gob.pe/",
+        "Origin": "https://resultados.onpe.gob.pe/"
       }
     });
 
-    const text = await response.text();
-
-    // 👇 MUY IMPORTANTE: parse manual (evita errores silenciosos)
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      return res.status(500).json({
-        error: "Respuesta inválida de ONPE",
-        raw: text.slice(0, 200)
-      });
-    }
+    const data = await response.json();
 
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.status(200).json(data);
