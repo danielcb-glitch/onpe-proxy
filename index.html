@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor ONPE - Real Time & Voice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; }
+        .update-flash { animation: flash 1s ease-out; }
+        @keyframes flash { 0% { background-color: rgba(0, 51, 102, 0.3); } 100% { background-color: transparent; } }
+        .pulse-live { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body class="text-gray-900">
+
+    <!-- Botón de Activación de Audio (Obligatorio para voz en móviles y navegadores estrictos) -->
+    <div id="audio-unlocker" class="fixed inset-0 bg-gray-900 bg-opacity-95 z-[100] flex flex-col items-center justify-center text-white px-6 text-center">
+        <i class="fa-solid fa-volume-high text-5xl mb-6 animate-bounce text-blue-400"></i>
+        <h2 class="text-2xl font-black uppercase mb-2">Activar Alertas de Voz</h2>
+        <p class="text-sm text-gray-300 mb-8 max-w-md">Para que el sistema pueda avisarte en voz alta cuando cambien los votos, debes iniciar el monitoreo manualmente.</p>
+        <button onclick="desbloquearAudio()" class="bg-blue-600 hover:bg-blue-500 text-white font-black py-4 px-8 rounded-full shadow-xl uppercase tracking-widest transition-transform active:scale-95">
+            Comenzar Monitoreo
+        </button>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-[#003366] text-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-white p-1 rounded">
+                    <i class="fa-solid fa-check-to-slot text-[#003366] text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold leading-none uppercase tracking-tight">Monitor Electoral con Voz</h1>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="inline-block w-2 h-2 bg-green-500 rounded-full pulse-live"></span>
+                        <p class="text-[9px] text-blue-200 font-bold uppercase tracking-widest">Frecuencia: 60 seg + Locución</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 mt-3 md:mt-0">
+                <div class="bg-[#002244] px-4 py-2 rounded border border-blue-800 text-center shadow-inner">
+                    <p class="text-[9px] uppercase font-bold text-blue-300">Siguiente Intento</p>
+                    <p class="text-xl font-mono font-bold text-yellow-400" id="timer">01:00</p>
+                </div>
+                <button onclick="ejecutarSincronizacion()" class="bg-white text-[#003366] px-4 py-2 rounded font-black text-xs hover:bg-blue-50 transition-all shadow-md active:scale-95">
+                    <i class="fa-solid fa-rotate mr-1"></i> ACTUALIZAR
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6 max-w-6xl">
+        
+        <!-- Estado de la Conexión -->
+        <div id="status-api" class="mb-6 p-3 rounded-lg text-[10px] font-black uppercase text-center border hidden"></div>
+
+        <!-- Barra de Progreso Principal -->
+        <section id="card-resumen" class="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-200">
+            <div class="flex justify-between items-end mb-2">
+                <div>
+                    <p class="text-[11px] font-black text-[#003366] uppercase">Avance de Actas</p>
+                    <h2 class="text-5xl font-black text-[#003366]" id="porcentaje-general-texto">93.349%</h2>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase">Sincronizado:</p>
+                    <p class="text-sm font-black text-gray-700" id="hora-actualizacion">--:--:--</p>
+                </div>
+            </div>
+            
+            <div class="w-full bg-gray-100 rounded-full h-8 mb-4 border-2 border-gray-200 p-1 flex overflow-hidden">
+                <div class="bg-[#003366] h-full rounded-full transition-all duration-1000 relative shadow-inner" id="barra-progreso" style="width: 93.349%"></div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-blue-50/50 p-3 rounded border border-blue-100 text-center">
+                    <p class="text-[9px] font-bold text-blue-400 uppercase">Actas</p>
+                    <p class="text-lg font-black text-[#003366]" id="val-contabilizadas">86,596</p>
+                </div>
+                <div class="bg-gray-50 p-3 rounded border border-gray-200 text-center">
+                    <p class="text-[9px] font-bold text-gray-400 uppercase">Meta Total</p>
+                    <p class="text-lg font-black text-gray-700" id="val-totales">92,766</p>
+                </div>
+                <div class="bg-gray-50 p-3 rounded border border-gray-200 text-center">
+                    <p class="text-[9px] font-bold text-gray-400 uppercase">Votos Válidos</p>
+                    <p class="text-lg font-black text-gray-700" id="val-validos">11,889,497</p>
+                </div>
+                <div class="bg-green-50 p-3 rounded border border-green-100 text-center">
+                    <p class="text-[9px] font-bold text-green-500 uppercase">Participación</p>
+                    <p class="text-lg font-black text-green-700" id="val-participacion">60.351%</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ALERTA DE DIFERENCIA (FOCO PRINCIPAL) -->
+        <section id="card-brecha" class="bg-red-600 rounded-xl p-1 mb-6 shadow-xl overflow-hidden">
+            <div class="bg-white rounded-lg p-6">
+                <div class="flex items-center justify-center gap-3 mb-6">
+                    <div class="h-px bg-gray-200 flex-grow"></div>
+                    <h3 class="text-xs font-black text-red-600 uppercase tracking-widest italic">
+                        <i class="fa-solid fa-volume-high animate-bounce mr-1"></i> Batalla por el 2do lugar
+                    </h3>
+                    <div class="h-px bg-gray-200 flex-grow"></div>
+                </div>
+                
+                <div class="flex flex-col md:flex-row gap-6 items-center justify-around">
+                    <div class="text-center w-full">
+                        <p class="text-[10px] text-gray-400 font-black uppercase mb-1 tracking-tighter">Votos de Diferencia</p>
+                        <p class="text-5xl font-black text-gray-800 tracking-tighter" id="diferencia-votos">0</p>
+                    </div>
+                    <div class="text-center w-full border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0">
+                        <p class="text-[10px] text-gray-400 font-black uppercase mb-1 tracking-tighter">Porcentaje de Brecha</p>
+                        <p class="text-5xl font-black text-gray-800 tracking-tighter" id="diferencia-porcentaje">0.000%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Top 3 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="contenedor-candidatos"></div>
+
+        <!-- Panel Manual -->
+        <div class="mt-12 p-8 bg-white rounded-2xl shadow-sm border border-gray-200">
+            <div class="flex items-center gap-3 mb-4">
+                <i class="fa-solid fa-microphone-lines text-blue-600"></i>
+                <h4 class="text-xs font-black text-gray-500 uppercase tracking-widest">Inyección de Respuesta ONPE</h4>
+            </div>
+            <textarea id="manual-json" class="w-full h-24 p-4 text-[10px] font-mono rounded-lg bg-gray-50 border border-gray-100 outline-none focus:border-[#003366] transition-all" placeholder="Pega el Response de participantes aquí..."></textarea>
+            <button onclick="procesarManual()" class="mt-3 w-full bg-[#003366] text-white py-4 rounded-lg font-black text-sm hover:bg-black transition-all shadow-lg uppercase active:scale-95">
+                Procesar y Locutar <i class="fa-solid fa-play ml-2"></i>
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        const TIEMPO_REFRESCO = 60; 
+        let segundosRestantes = TIEMPO_REFRESCO;
+        const formatNum = new Intl.NumberFormat('es-PE');
+
+        let appState = {
+            resumen: { "actasContabilizadas": 93.349, "contabilizadas": 86596, "totalActas": 92766, "fechaActualizacion": Date.now(), "totalVotosValidos": 11889497, "participacionCiudadana": 60.351 },
+            candidatos: [
+                { "nombreAgrupacionPolitica": "FUERZA POPULAR", "nombreCandidato": "KEIKO SOFIA FUJIMORI HIGUCHI", "totalVotosValidos": 2685995, "porcentajeVotosValidos": 17.057 },
+                { "nombreAgrupacionPolitica": "JUNTOS POR EL PERÚ", "nombreCandidato": "ROBERTO HELBERT SANCHEZ PALOMINO", "totalVotosValidos": 1890420, "porcentajeVotosValidos": 12.005 },
+                { "nombreAgrupacionPolitica": "RENOVACIÓN POPULAR", "nombreCandidato": "RAFAEL BERNARDO LÓPEZ ALIAGA CAZORLA", "totalVotosValidos": 1877104, "porcentajeVotosValidos": 11.92 }
+            ]
+        };
+
+        // --- DEFINICIÓN DE FUNCIONES UI ---
+        function flashEffect(id) {
+            const el = document.getElementById(id);
+            if(el) { 
+                el.classList.add('update-flash'); 
+                setTimeout(() => el.classList.remove('update-flash'), 1000); 
+            }
+        }
+
+        // --- FUNCIONES DE AUDIO ---
+        let audioDesbloqueado = false;
+
+        function desbloquearAudio() {
+            // Desbloqueo de AudioContext (Sonidos)
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            osc.connect(audioCtx.destination);
+            osc.start(0);
+            osc.stop(0.001);
+            
+            // Desbloqueo de SpeechSynthesis (Voz)
+            if (window.speechSynthesis) {
+                const utterance = new SpeechSynthesisUtterance("");
+                window.speechSynthesis.speak(utterance);
+            }
+
+            audioDesbloqueado = true;
+            document.getElementById('audio-unlocker').style.display = 'none';
+        }
+
+        function emitirAlertaLarga() {
+            if (!audioDesbloqueado) return;
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const playTone = (freq, start, duration, type = 'sine') => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + start);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime + start);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + start + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + start);
+                osc.stop(audioCtx.currentTime + start + duration);
+            };
+            // Secuencia de 4 tonos: Notificación importante
+            playTone(440, 0, 0.2, 'square'); 
+            playTone(554, 0.15, 0.2, 'square');
+            playTone(659, 0.3, 0.2, 'square');
+            playTone(880, 0.45, 0.4, 'sine');
+        }
+
+        function leerResultados(segundo, tercero, diferencia) {
+            if (!window.speechSynthesis || !audioDesbloqueado) return;
+
+            // Detener cualquier locución previa
+            window.speechSynthesis.cancel();
+
+            const texto = `Atención. Se han actualizado los resultados. El segundo puesto es para ${segundo.nombreCandidato.toLowerCase()}. El tercer puesto es para ${tercero.nombreCandidato.toLowerCase()}. La diferencia es de ${diferencia} votos.`;
+            
+            const utterance = new SpeechSynthesisUtterance(texto);
+            utterance.lang = 'es-PE';
+            utterance.rate = 1;
+            utterance.pitch = 1.1;
+            
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- LÓGICA DE DETECCIÓN Y ACTUALIZACIÓN ---
+
+        function actualizarInterfaz(nuevosCandidatos = null) {
+            const r = appState.resumen;
+            
+            // Si hay datos nuevos de candidatos, comparamos para ver si hubo cambio real
+            if (nuevosCandidatos) {
+                const actuales = [...appState.candidatos].sort((a,b) => b.totalVotosValidos - a.totalVotosValidos);
+                const futuros = [...nuevosCandidatos].sort((a,b) => b.totalVotosValidos - a.totalVotosValidos);
+                
+                // Comprobamos si el total de votos de cualquiera de los 3 primeros cambió
+                let huboCambio = false;
+                for(let i=0; i<3; i++) {
+                    if(actuales[i]?.totalVotosValidos !== futuros[i]?.totalVotosValidos) {
+                        huboCambio = true;
+                        break;
+                    }
+                }
+
+                if(huboCambio) {
+                    emitirAlertaLarga();
+                    const diff = futuros[1].totalVotosValidos - futuros[2].totalVotosValidos;
+                    leerResultados(futuros[1], futuros[2], formatNum.format(diff));
+                    appState.candidatos = nuevosCandidatos;
+                }
+            }
+
+            document.getElementById('hora-actualizacion').textContent = new Date(r.fechaActualizacion).toLocaleTimeString('es-PE');
+            document.getElementById('porcentaje-general-texto').textContent = r.actasContabilizadas.toFixed(3) + '%';
+            document.getElementById('barra-progreso').style.width = r.actasContabilizadas + '%';
+            document.getElementById('val-contabilizadas').textContent = formatNum.format(r.contabilizadas);
+            document.getElementById('val-totales').textContent = formatNum.format(r.totalActas);
+            document.getElementById('val-validos').textContent = formatNum.format(r.totalVotosValidos);
+            document.getElementById('val-participacion').textContent = r.participacionCiudadana.toFixed(3) + '%';
+            
+            const sorted = [...appState.candidatos].sort((a, b) => b.totalVotosValidos - a.totalVotosValidos).slice(0, 3);
+            const diffVotos = sorted[1].totalVotosValidos - sorted[2].totalVotosValidos;
+            const diffPorc = sorted[1].porcentajeVotosValidos - sorted[2].porcentajeVotosValidos;
+            
+            document.getElementById('diferencia-votos').textContent = formatNum.format(diffVotos);
+            document.getElementById('diferencia-porcentaje').textContent = diffPorc.toFixed(3) + '%';
+
+            const contenedor = document.getElementById('contenedor-candidatos');
+            contenedor.innerHTML = '';
+            sorted.forEach((c, i) => {
+                const puesto = i + 1;
+                const borderClass = puesto === 1 ? 'border-t-[#003366]' : (puesto === 2 ? 'border-t-yellow-500' : 'border-t-red-500');
+                contenedor.innerHTML += `
+                    <div class="bg-white rounded-xl shadow-sm border-t-8 ${borderClass} overflow-hidden">
+                        <div class="px-4 py-2 bg-gray-50 flex justify-between items-center border-b">
+                            <span class="text-2xl font-black text-gray-200">#${puesto}</span>
+                            <span class="text-[9px] font-black px-2 py-0.5 rounded ${puesto === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'} uppercase">
+                                ${puesto === 1 ? 'Inalcanzable' : (puesto === 2 ? 'En Peligro' : 'A la Caza')}
+                            </span>
+                        </div>
+                        <div class="p-6 text-center">
+                            <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(c.nombreCandidato)}&background=random&color=fff&size=128" class="w-20 h-20 rounded-full mx-auto mb-4 shadow-md border-2 border-white">
+                            <h3 class="text-xs font-black uppercase text-gray-800 leading-tight h-8 flex items-center justify-center">${c.nombreCandidato}</h3>
+                            <p class="text-[8px] text-gray-400 font-bold mt-2 truncate uppercase px-4">${c.nombreAgrupacionPolitica}</p>
+                        </div>
+                        <div class="grid grid-cols-2 bg-gray-50 border-t">
+                            <div class="p-4 border-r text-center">
+                                <p class="text-[9px] font-bold text-gray-400 uppercase">Votos</p>
+                                <p class="text-xs font-black">${formatNum.format(c.totalVotosValidos)}</p>
+                            </div>
+                            <div class="p-4 text-center">
+                                <p class="text-[9px] font-bold text-gray-400 uppercase">Porcentaje</p>
+                                <p class="text-sm font-black text-[#003366]">${c.porcentajeVotosValidos.toFixed(3)}%</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Usamos try-catch adicional por seguridad en la animación UI
+            try {
+                flashEffect('card-resumen'); 
+                flashEffect('card-brecha');
+            } catch (e) {
+                console.error("Error al aplicar efectos visuales: ", e);
+            }
+        }
+
+        async function ejecutarSincronizacion() {
+            const status = document.getElementById('status-api');
+            status.classList.remove('hidden');
+            status.className = "mb-6 p-2 rounded text-[9px] font-black uppercase text-center border bg-blue-50 text-blue-700 border-blue-200";
+            status.textContent = "Auto-Consultando servidor...";
+
+            try {
+                const resT = await fetch("https://onpe-proxy.vercel.app/api/onpe?tipo=resumen");
+const resP = await fetch("https://onpe-proxy.vercel.app/api/onpe?tipo=participantes");
+                
+                if(resT.ok && resP.ok) {
+                    const jt = await resT.json(); const jp = await resP.json();
+                    appState.resumen = jt.data;
+                    actualizarInterfaz(jp.data);
+                    status.className = "mb-6 p-2 rounded text-[9px] font-black uppercase text-center border bg-green-50 text-green-700 border-green-200";
+                    status.textContent = "Datos actualizados automáticamente";
+                } else { 
+                    throw new Error("HTTP Status Error"); 
+                }
+            } catch (e) {
+                console.error("Error durante sincronización:", e);
+                status.className = "mb-6 p-2 rounded text-[9px] font-black uppercase text-center border bg-orange-50 text-orange-700 border-orange-200";
+                status.textContent = "Conexión manual requerida (Bloqueo CORS)";
+                actualizarInterfaz();
+            }
+            segundosRestantes = TIEMPO_REFRESCO;
+        }
+
+        function procesarManual() {
+            const raw = document.getElementById('manual-json').value;
+            try {
+                const json = JSON.parse(raw);
+                const data = json.data || json;
+                if (data.actasContabilizadas !== undefined) { 
+                    appState.resumen = data; 
+                    actualizarInterfaz();
+                } 
+                else if (Array.isArray(data)) { 
+                    actualizarInterfaz(data); 
+                }
+                document.getElementById('manual-json').value = '';
+            } catch (e) { 
+                alert("JSON inválido."); 
+                console.error("Error parseando JSON manual:", e);
+            }
+        }
+
+        setInterval(() => {
+            segundosRestantes--;
+            if (segundosRestantes <= 0) ejecutarSincronizacion();
+            const m = Math.floor(segundosRestantes / 60); const s = segundosRestantes % 60;
+            document.getElementById('timer').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }, 1000);
+
+        window.onload = () => {
+            try {
+                actualizarInterfaz();
+            } catch(e) {
+                console.error("Error en inicialización: ", e);
+            }
+        };
+    </script>
+</body>
+</html>
